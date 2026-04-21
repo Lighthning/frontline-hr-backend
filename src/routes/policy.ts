@@ -6,6 +6,7 @@ import {
   createGeofence,
   updateGeofence,
   resetToDefault,
+  getMyPolicy,
 } from '../controllers/policyController';
 import { authenticate, requireRole } from '../middleware/auth';
 
@@ -18,6 +19,9 @@ router.use(authenticate);
 router.get('/geofences', getAllGeofences);
 router.post('/geofences', requireRole('admin', 'hr'), createGeofence);
 router.put('/geofences/:id', requireRole('admin', 'hr'), updateGeofence);
+
+// Current user's policy
+router.get('/my-policy', getMyPolicy);
 
 // Per-employee policy
 router.get('/employees/:userId/policy', requireRole('admin', 'hr'), getEmployeePolicy);

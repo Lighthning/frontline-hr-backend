@@ -55,6 +55,15 @@ const login = async (req, res) => {
             res.status(400).json({ success: false, error: 'Email and password are required' });
             return;
         }
+        // Email format validation
+        if (typeof email !== 'string' || !email.includes('@') || email.trim().length < 5) {
+            res.status(400).json({ success: false, error: 'Valid email address is required' });
+            return;
+        }
+        if (typeof password !== 'string' || password.length < 1) {
+            res.status(400).json({ success: false, error: 'Password is required' });
+            return;
+        }
         const result = await db_1.default.query('SELECT id, employee_id, full_name, email, password_hash, role, department, designation, is_active FROM users WHERE email = $1', [email]);
         if (result.rows.length === 0) {
             res.status(401).json({ success: false, error: 'Invalid credentials' });

@@ -8,6 +8,7 @@ const router = (0, express_1.Router)();
 router.get('/geofence', auth_1.authenticate, (0, auth_1.requireRole)('admin', 'hr'), adminController_1.getGeofenceLocations);
 router.put('/geofence/:id', auth_1.authenticate, (0, auth_1.requireRole)('admin'), adminController_1.updateGeofenceLocation);
 router.get('/stats', auth_1.authenticate, (0, auth_1.requireRole)('admin', 'hr'), adminController_1.getDashboardStats);
+router.get('/dashboard', auth_1.authenticate, (0, auth_1.requireRole)('admin', 'hr'), adminController_1.getDashboardStats);
 // GET /api/admin/storage-stats
 router.get('/storage-stats', auth_1.authenticate, (0, auth_1.requireRole)('admin'), (req, res) => {
     const stats = (0, upload_1.getStorageStats)();

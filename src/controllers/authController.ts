@@ -61,6 +61,17 @@ export const login = async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
+    // Email format validation
+    if (typeof email !== 'string' || !email.includes('@') || email.trim().length < 5) {
+      res.status(400).json({ success: false, error: 'Valid email address is required' });
+      return;
+    }
+
+    if (typeof password !== 'string' || password.length < 1) {
+      res.status(400).json({ success: false, error: 'Password is required' });
+      return;
+    }
+
     const result = await pool.query(
       'SELECT id, employee_id, full_name, email, password_hash, role, department, designation, is_active FROM users WHERE email = $1',
       [email]

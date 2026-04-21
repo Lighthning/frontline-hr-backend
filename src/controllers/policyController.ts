@@ -46,6 +46,50 @@ export const getEmployeePolicy = async (req: AuthRequest, res: Response): Promis
   }
 };
 
+// ─── GET MY POLICY (CURRENT USER) ────────────────────────────
+export const getMyPolicy = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    if (!req.user) {
+      res.status(401).json({ success: false, error: 'Authentication required' });
+      return;
+    }
+
+    const result = await pool.query(
+      `SELECT
+        p.*,
+        COALESCE(
+          (SELECT json_agg(gl.*)
+           FROM geofence_locations gl
+           WHERE gl.id = ANY(p.custom_geofence_ids) AND gl.is_active = true),
+          '[]'
+        ) as custom_geofences
+       FROM employee_attendance_policy p
+       WHERE p.user_id = $1`,
+      [req.user.userId]
+    );
+
+    if (result.rows.length === 0) {
+      // No policy yet — create default
+      const insertResult = await pool.query(
+        `INSERT INTO employee_attendance_policy (
+          user_id, work_start_time, work_end_time, work_days,
+          enforce_check_in_time, check_in_window_start, check_in_window_end
+        )
+         VALUES ($1, '09:00:00', '17:00:00', '{0,1,2,3,4}', true, '09:00:00', '09:30:00')
+         ON CONFLICT (user_id) DO UPDATE SET updated_at = NOW()
+         RETURNING *`,
+        [req.user.userId]
+      );
+      res.json({ success: true, data: { ...insertResult.rows[0], custom_geofences: [] } });
+      return;
+    }
+
+    res.json({ success: true, data: result.rows[0] });
+  } catch (error) {
+    res.status(500).json({ success: false, error: 'Failed to fetch policy.' });
+  }
+};
+
 // ─── UPDATE EMPLOYEE POLICY ──────────────────────────────────
 export const updateEmployeePolicy = async (req: AuthRequest, res: Response): Promise<void> => {
   try {

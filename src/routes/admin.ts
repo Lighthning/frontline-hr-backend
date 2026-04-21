@@ -12,6 +12,7 @@ const router = Router();
 router.get('/geofence', authenticate, requireRole('admin', 'hr'), getGeofenceLocations);
 router.put('/geofence/:id', authenticate, requireRole('admin'), updateGeofenceLocation);
 router.get('/stats', authenticate, requireRole('admin', 'hr'), getDashboardStats);
+router.get('/dashboard', authenticate, requireRole('admin', 'hr'), getDashboardStats);
 
 // GET /api/admin/storage-stats
 router.get('/storage-stats', authenticate, requireRole('admin'), (req, res) => {

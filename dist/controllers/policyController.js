@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.resetToDefault = exports.updateGeofence = exports.createGeofence = exports.getAllGeofences = exports.updateEmployeePolicy = exports.getEmployeePolicy = void 0;
+exports.resetToDefault = exports.updateGeofence = exports.createGeofence = exports.getAllGeofences = exports.updateEmployeePolicy = exports.getMyPolicy = exports.getEmployeePolicy = void 0;
 const db_1 = __importDefault(require("../db"));
 // ─── GET EMPLOYEE POLICY ─────────────────────────────────────
 const getEmployeePolicy = async (req, res) => {
@@ -41,6 +41,42 @@ const getEmployeePolicy = async (req, res) => {
     }
 };
 exports.getEmployeePolicy = getEmployeePolicy;
+// ─── GET MY POLICY (CURRENT USER) ────────────────────────────
+const getMyPolicy = async (req, res) => {
+    try {
+        if (!req.user) {
+            res.status(401).json({ success: false, error: 'Authentication required' });
+            return;
+        }
+        const result = await db_1.default.query(`SELECT
+        p.*,
+        COALESCE(
+          (SELECT json_agg(gl.*)
+           FROM geofence_locations gl
+           WHERE gl.id = ANY(p.custom_geofence_ids) AND gl.is_active = true),
+          '[]'
+        ) as custom_geofences
+       FROM employee_attendance_policy p
+       WHERE p.user_id = $1`, [req.user.userId]);
+        if (result.rows.length === 0) {
+            // No policy yet — create default
+            const insertResult = await db_1.default.query(`INSERT INTO employee_attendance_policy (
+          user_id, work_start_time, work_end_time, work_days,
+          enforce_check_in_time, check_in_window_start, check_in_window_end
+        )
+         VALUES ($1, '09:00:00', '17:00:00', '{0,1,2,3,4}', true, '09:00:00', '09:30:00')
+         ON CONFLICT (user_id) DO UPDATE SET updated_at = NOW()
+         RETURNING *`, [req.user.userId]);
+            res.json({ success: true, data: { ...insertResult.rows[0], custom_geofences: [] } });
+            return;
+        }
+        res.json({ success: true, data: result.rows[0] });
+    }
+    catch (error) {
+        res.status(500).json({ success: false, error: 'Failed to fetch policy.' });
+    }
+};
+exports.getMyPolicy = getMyPolicy;
 // ─── UPDATE EMPLOYEE POLICY ──────────────────────────────────
 const updateEmployeePolicy = async (req, res) => {
     try {

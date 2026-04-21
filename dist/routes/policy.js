@@ -10,6 +10,8 @@ router.use(auth_1.authenticate);
 router.get('/geofences', policyController_1.getAllGeofences);
 router.post('/geofences', (0, auth_1.requireRole)('admin', 'hr'), policyController_1.createGeofence);
 router.put('/geofences/:id', (0, auth_1.requireRole)('admin', 'hr'), policyController_1.updateGeofence);
+// Current user's policy
+router.get('/my-policy', policyController_1.getMyPolicy);
 // Per-employee policy
 router.get('/employees/:userId/policy', (0, auth_1.requireRole)('admin', 'hr'), policyController_1.getEmployeePolicy);
 router.put('/employees/:userId/policy', (0, auth_1.requireRole)('admin', 'hr'), policyController_1.updateEmployeePolicy);
