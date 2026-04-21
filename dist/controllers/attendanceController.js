@@ -32,6 +32,12 @@ const checkIn = async (req, res) => {
         const userId = req.user.userId;
         const { latitude, longitude } = req.body;
         const file = req.file;
+        // Debug logging
+        console.log('[CheckIn] Received request - userId:', userId);
+        console.log('[CheckIn] req.body:', JSON.stringify(req.body));
+        console.log('[CheckIn] latitude:', latitude, 'type:', typeof latitude);
+        console.log('[CheckIn] longitude:', longitude, 'type:', typeof longitude);
+        console.log('[CheckIn] file:', file ? file.filename : 'NO FILE');
         // Fetch employee's attendance policy
         const policyResult = await db_1.default.query('SELECT * FROM employee_attendance_policy WHERE user_id = $1', [userId]);
         const policy = policyResult.rows[0] || {
