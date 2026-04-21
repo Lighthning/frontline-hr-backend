@@ -105,7 +105,7 @@ app.get('/health', (req, res) => {
     });
 });
 // ============================================================================
-// UPLOADS: Path traversal protection + cache headers
+// UPLOADS: Path traversal protection + cache headers + CORS for images
 // ============================================================================
 app.use('/uploads', (req, res, next) => {
     // Path traversal protection
@@ -116,6 +116,11 @@ app.use('/uploads', (req, res, next) => {
             error: 'Invalid file path',
         });
     }
+    // CORS headers for images (allow all origins for static assets)
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
     // Cache headers for static assets
     res.setHeader('Cache-Control', 'public, max-age=604800, immutable'); // 7 days
     res.setHeader('X-Content-Type-Options', 'nosniff');

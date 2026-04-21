@@ -46,7 +46,9 @@ const updateEmployeePolicy = async (req, res) => {
     try {
         const { userId } = req.params;
         const targetId = parseInt(userId);
-        const { geofenceOverride, customGeofenceIds, photoRequired, allowRemote, remoteReason, enforceCheckInTime, checkInWindowStart, checkInWindowEnd, checkOutWindowStart, checkOutWindowEnd, workStartTime, workEndTime, workDays, gracePeriodMinutes, policyNotes, } = req.body;
+        console.log('[POLICY DEBUG] Received request to update policy for userId:', userId);
+        console.log('[POLICY DEBUG] Request body:', JSON.stringify(req.body, null, 2));
+        const { geofenceOverride, customGeofenceIds, photoRequired, allowRemote, remoteReason, enforceCheckInTime, checkInWindowStart, checkInWindowEnd, checkOutWindowStart, checkOutWindowEnd, workStartTime, workEndTime, workDays, gracePeriodMinutes, latePenaltyMinutes, policyNotes, } = req.body;
         // Validate geofenceOverride value
         const validOverrides = ['office', 'any', 'remote', 'custom'];
         if (geofenceOverride && !validOverrides.includes(geofenceOverride)) {
@@ -73,9 +75,9 @@ const updateEmployeePolicy = async (req, res) => {
         check_in_window_start, check_in_window_end,
         check_out_window_start, check_out_window_end,
         work_start_time, work_end_time, work_days, grace_period_minutes,
-        policy_notes, updated_at
+        late_penalty_minutes, policy_notes, updated_at
       )
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,NOW())
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,NOW())
       ON CONFLICT (user_id) DO UPDATE SET
         geofence_override = EXCLUDED.geofence_override,
         custom_geofence_ids = EXCLUDED.custom_geofence_ids,
@@ -91,6 +93,7 @@ const updateEmployeePolicy = async (req, res) => {
         work_end_time = EXCLUDED.work_end_time,
         work_days = EXCLUDED.work_days,
         grace_period_minutes = EXCLUDED.grace_period_minutes,
+        late_penalty_minutes = EXCLUDED.late_penalty_minutes,
         policy_notes = EXCLUDED.policy_notes,
         updated_at = NOW()
       RETURNING *`, [
@@ -109,8 +112,10 @@ const updateEmployeePolicy = async (req, res) => {
             workEndTime || '17:00:00',
             workDays || [0, 1, 2, 3, 4],
             gracePeriodMinutes || 0,
+            latePenaltyMinutes !== undefined ? latePenaltyMinutes : 0,
             policyNotes || null,
         ]);
+        console.log('[POLICY DEBUG] Successfully updated policy:', result.rows[0]);
         res.json({
             success: true,
             message: 'Employee attendance policy updated.',
@@ -118,7 +123,13 @@ const updateEmployeePolicy = async (req, res) => {
         });
     }
     catch (error) {
-        res.status(500).json({ success: false, error: 'Failed to update employee policy.' });
+        console.error('[POLICY ERROR] Failed to update employee policy:', error);
+        console.error('[POLICY ERROR] Error details:', error instanceof Error ? error.message : String(error));
+        res.status(500).json({
+            success: false,
+            error: 'Failed to update employee policy.',
+            details: error instanceof Error ? error.message : String(error)
+        });
     }
 };
 exports.updateEmployeePolicy = updateEmployeePolicy;
