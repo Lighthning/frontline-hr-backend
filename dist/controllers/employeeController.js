@@ -13,8 +13,7 @@ const getCurrentEmployee = async (req, res) => {
             return;
         }
         const result = await db_1.default.query(`SELECT id, employee_id, full_name, email, phone, department, designation, role,
-       profile_photo_url, date_of_joining, iqama_number, iqama_expiry, nationality,
-       emergency_contact_name, emergency_contact_phone, is_active, created_at
+       date_of_joining, is_active, created_at
        FROM users WHERE id = $1`, [req.user.userId]);
         if (result.rows.length === 0) {
             res.status(404).json({ success: false, error: 'Employee not found' });
@@ -32,13 +31,7 @@ const getCurrentEmployee = async (req, res) => {
                 department: employee.department,
                 designation: employee.designation,
                 role: employee.role,
-                profilePhotoUrl: employee.profile_photo_url,
                 dateOfJoining: employee.date_of_joining,
-                iqamaNumber: employee.iqama_number,
-                iqamaExpiry: employee.iqama_expiry,
-                nationality: employee.nationality,
-                emergencyContactName: employee.emergency_contact_name,
-                emergencyContactPhone: employee.emergency_contact_phone,
                 isActive: employee.is_active,
                 createdAt: employee.created_at,
             },
@@ -160,7 +153,7 @@ const getAllEmployees = async (req, res) => {
         const isActive = req.query.isActive;
         let query = `
       SELECT id, employee_id, full_name, email, phone, department, designation, role,
-       profile_photo_url, date_of_joining, is_active, created_at
+       date_of_joining, is_active, created_at
       FROM users
       WHERE 1=1
     `;
@@ -180,20 +173,22 @@ const getAllEmployees = async (req, res) => {
         const result = await db_1.default.query(query, params);
         res.json({
             success: true,
-            data: result.rows.map((emp) => ({
-                id: emp.id,
-                employeeId: emp.employee_id,
-                fullName: emp.full_name,
-                email: emp.email,
-                phone: emp.phone,
-                department: emp.department,
-                designation: emp.designation,
-                role: emp.role,
-                profilePhotoUrl: emp.profile_photo_url,
-                dateOfJoining: emp.date_of_joining,
-                isActive: emp.is_active,
-                createdAt: emp.created_at,
-            })),
+            data: {
+                employees: result.rows.map((emp) => ({
+                    id: emp.id,
+                    employeeId: emp.employee_id,
+                    fullName: emp.full_name,
+                    email: emp.email,
+                    phone: emp.phone,
+                    department: emp.department,
+                    designation: emp.designation,
+                    role: emp.role,
+                    dateOfJoining: emp.date_of_joining,
+                    isActive: emp.is_active,
+                    createdAt: emp.created_at,
+                })),
+                total: result.rows.length,
+            },
         });
     }
     catch (error) {
