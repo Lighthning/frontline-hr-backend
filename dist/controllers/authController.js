@@ -7,6 +7,47 @@ exports.getCurrentUser = exports.logout = exports.refresh = exports.login = void
 const bcryptjs_1 = __importDefault(require("bcryptjs"));
 const db_1 = __importDefault(require("../db"));
 const jwt_1 = require("../utils/jwt");
+// ============================================================================
+// SHARED: Full user SELECT with all columns
+// ============================================================================
+const USER_SELECT = `
+  id, employee_id, full_name, email, phone, department, designation, role,
+  profile_photo_url, date_of_joining, date_of_birth, gender, address, city,
+  nationality, iqama_number, iqama_expiry,
+  emergency_contact_name, emergency_contact_phone,
+  bank_account_number, bank_name, salary,
+  is_active, created_at, updated_at
+`;
+// ============================================================================
+// SHARED: Map database row to camelCase response
+// ============================================================================
+const mapUser = (u) => ({
+    id: u.id,
+    employeeId: u.employee_id,
+    fullName: u.full_name,
+    email: u.email,
+    phone: u.phone || null,
+    department: u.department || null,
+    designation: u.designation || null,
+    role: u.role,
+    profilePhotoUrl: u.profile_photo_url || null,
+    dateOfJoining: u.date_of_joining || null,
+    dateOfBirth: u.date_of_birth || null,
+    gender: u.gender || null,
+    address: u.address || null,
+    city: u.city || null,
+    nationality: u.nationality || null,
+    iqamaNumber: u.iqama_number || null,
+    iqamaExpiry: u.iqama_expiry || null,
+    emergencyContactName: u.emergency_contact_name || null,
+    emergencyContactPhone: u.emergency_contact_phone || null,
+    bankAccountNumber: u.bank_account_number || null,
+    bankName: u.bank_name || null,
+    salary: u.salary ? parseFloat(u.salary) : null,
+    isActive: u.is_active,
+    createdAt: u.created_at,
+    updatedAt: u.updated_at,
+});
 const login = async (req, res) => {
     try {
         const { email, password } = req.body;
@@ -111,32 +152,18 @@ const getCurrentUser = async (req, res) => {
             res.status(401).json({ success: false, error: 'Authentication required' });
             return;
         }
-        const result = await db_1.default.query(`SELECT id, employee_id, full_name, email, phone, department, designation, role,
-       date_of_joining, is_active, created_at
-       FROM users WHERE id = $1`, [req.user.userId]);
+        const result = await db_1.default.query(`SELECT ${USER_SELECT} FROM users WHERE id = $1`, [req.user.userId]);
         if (result.rows.length === 0) {
             res.status(404).json({ success: false, error: 'User not found' });
             return;
         }
-        const user = result.rows[0];
         res.json({
             success: true,
-            data: {
-                id: user.id,
-                employeeId: user.employee_id,
-                fullName: user.full_name,
-                email: user.email,
-                phone: user.phone,
-                department: user.department,
-                designation: user.designation,
-                role: user.role,
-                dateOfJoining: user.date_of_joining,
-                isActive: user.is_active,
-                createdAt: user.created_at,
-            },
+            data: mapUser(result.rows[0]),
         });
     }
     catch (error) {
+        console.error('[getCurrentUser]', error);
         res.status(500).json({ success: false, error: 'Internal server error' });
     }
 };

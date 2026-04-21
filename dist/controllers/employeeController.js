@@ -3,134 +3,491 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.deleteEmployee = exports.updateEmployee = exports.getEmployeeById = exports.createEmployee = exports.getAllEmployees = exports.uploadProfilePhoto = exports.updateCurrentEmployee = exports.getCurrentEmployee = void 0;
+exports.uploadProfilePhoto = exports.updateCurrentEmployee = exports.toggleEmployeeActive = exports.deleteEmployee = exports.updateEmployee = exports.createEmployee = exports.getAllEmployees = exports.getEmployeeById = exports.getCurrentEmployee = void 0;
 const bcryptjs_1 = __importDefault(require("bcryptjs"));
 const db_1 = __importDefault(require("../db"));
+// ============================================================================
+// SHARED: Full user SELECT with all columns
+// ============================================================================
+const USER_SELECT = `
+  id, employee_id, full_name, email, phone, department, designation, role,
+  profile_photo_url, date_of_joining, date_of_birth, gender, address, city,
+  nationality, iqama_number, iqama_expiry,
+  emergency_contact_name, emergency_contact_phone,
+  bank_account_number, bank_name, salary,
+  is_active, created_at, updated_at
+`;
+// ============================================================================
+// SHARED: Map database row to camelCase response
+// ============================================================================
+const mapUser = (u) => ({
+    id: u.id,
+    employeeId: u.employee_id,
+    fullName: u.full_name,
+    email: u.email,
+    phone: u.phone || null,
+    department: u.department || null,
+    designation: u.designation || null,
+    role: u.role,
+    profilePhotoUrl: u.profile_photo_url || null,
+    dateOfJoining: u.date_of_joining || null,
+    dateOfBirth: u.date_of_birth || null,
+    gender: u.gender || null,
+    address: u.address || null,
+    city: u.city || null,
+    nationality: u.nationality || null,
+    iqamaNumber: u.iqama_number || null,
+    iqamaExpiry: u.iqama_expiry || null,
+    emergencyContactName: u.emergency_contact_name || null,
+    emergencyContactPhone: u.emergency_contact_phone || null,
+    bankAccountNumber: u.bank_account_number || null,
+    bankName: u.bank_name || null,
+    salary: u.salary ? parseFloat(u.salary) : null,
+    isActive: u.is_active,
+    createdAt: u.created_at,
+    updatedAt: u.updated_at,
+});
+// ============================================================================
+// GET /api/employees/me — Get current authenticated employee (for mobile)
+// ============================================================================
 const getCurrentEmployee = async (req, res) => {
     try {
         if (!req.user) {
             res.status(401).json({ success: false, error: 'Authentication required' });
             return;
         }
-        const result = await db_1.default.query(`SELECT id, employee_id, full_name, email, phone, department, designation, role,
-       date_of_joining, is_active, created_at
-       FROM users WHERE id = $1`, [req.user.userId]);
+        const result = await db_1.default.query(`SELECT ${USER_SELECT} FROM users WHERE id = $1`, [req.user.userId]);
         if (result.rows.length === 0) {
             res.status(404).json({ success: false, error: 'Employee not found' });
             return;
         }
-        const employee = result.rows[0];
-        res.json({
-            success: true,
-            data: {
-                id: employee.id,
-                employeeId: employee.employee_id,
-                fullName: employee.full_name,
-                email: employee.email,
-                phone: employee.phone,
-                department: employee.department,
-                designation: employee.designation,
-                role: employee.role,
-                dateOfJoining: employee.date_of_joining,
-                isActive: employee.is_active,
-                createdAt: employee.created_at,
-            },
-        });
+        res.json({ success: true, data: mapUser(result.rows[0]) });
     }
     catch (error) {
+        console.error('[getCurrentEmployee]', error);
         res.status(500).json({ success: false, error: 'Internal server error' });
     }
 };
 exports.getCurrentEmployee = getCurrentEmployee;
+// ============================================================================
+// GET /api/employees/:id — Get one employee by ID
+// ============================================================================
+const getEmployeeById = async (req, res) => {
+    try {
+        if (!req.user) {
+            res.status(401).json({ success: false, error: 'Authentication required' });
+            return;
+        }
+        const { id } = req.params;
+        const employeeId = parseInt(id);
+        if (isNaN(employeeId)) {
+            res.status(400).json({ success: false, error: 'Invalid employee ID' });
+            return;
+        }
+        const result = await db_1.default.query(`SELECT ${USER_SELECT} FROM users WHERE id = $1`, [employeeId]);
+        if (result.rows.length === 0) {
+            res.status(404).json({ success: false, error: 'Employee not found' });
+            return;
+        }
+        res.json({ success: true, data: mapUser(result.rows[0]) });
+    }
+    catch (error) {
+        console.error('[getEmployeeById]', error);
+        res.status(500).json({ success: false, error: 'Internal server error' });
+    }
+};
+exports.getEmployeeById = getEmployeeById;
+// ============================================================================
+// GET /api/employees — List all employees with pagination and filters
+// ============================================================================
+const getAllEmployees = async (req, res) => {
+    try {
+        if (!req.user) {
+            res.status(401).json({ success: false, error: 'Authentication required' });
+            return;
+        }
+        const page = parseInt(req.query.page) || 1;
+        const limit = Math.min(parseInt(req.query.limit) || 50, 100);
+        const offset = (page - 1) * limit;
+        const search = req.query.search;
+        const department = req.query.department;
+        const role = req.query.role;
+        const isActive = req.query.isActive;
+        let where = 'WHERE 1=1';
+        const params = [];
+        let paramCount = 1;
+        if (search && search.trim()) {
+            params.push(`%${search.trim()}%`);
+            where += ` AND (full_name ILIKE $${paramCount} OR email ILIKE $${paramCount} OR employee_id ILIKE $${paramCount})`;
+            paramCount++;
+        }
+        if (department && department.trim()) {
+            params.push(department.trim());
+            where += ` AND department = $${paramCount}`;
+            paramCount++;
+        }
+        if (role && role.trim()) {
+            params.push(role.trim());
+            where += ` AND role = $${paramCount}`;
+            paramCount++;
+        }
+        if (isActive !== undefined) {
+            const activeValue = String(isActive) === 'true';
+            params.push(activeValue);
+            where += ` AND is_active = $${paramCount}`;
+            paramCount++;
+        }
+        // Get total count
+        const countResult = await db_1.default.query(`SELECT COUNT(*) FROM users ${where}`, params);
+        const total = parseInt(countResult.rows[0].count);
+        // Get paginated results
+        params.push(limit, offset);
+        const result = await db_1.default.query(`SELECT ${USER_SELECT} FROM users ${where} ORDER BY created_at DESC LIMIT $${paramCount} OFFSET $${paramCount + 1}`, params);
+        res.json({
+            success: true,
+            data: {
+                employees: result.rows.map(mapUser),
+                total,
+                page,
+                limit,
+                totalPages: Math.ceil(total / limit),
+            },
+        });
+    }
+    catch (error) {
+        console.error('[getAllEmployees]', error);
+        res.status(500).json({ success: false, error: 'Internal server error' });
+    }
+};
+exports.getAllEmployees = getAllEmployees;
+// ============================================================================
+// POST /api/employees — Create new employee with full HR fields
+// ============================================================================
+const createEmployee = async (req, res) => {
+    try {
+        if (!req.user) {
+            res.status(401).json({ success: false, error: 'Authentication required' });
+            return;
+        }
+        // Support both camelCase and snake_case for flexibility
+        const { employee_id, employeeId, full_name, fullName, email, password, phone, department, designation, role, profile_photo_url, profilePhotoUrl, date_of_joining, dateOfJoining, date_of_birth, dateOfBirth, gender, address, city, nationality, iqama_number, iqamaNumber, iqama_expiry, iqamaExpiry, emergency_contact_name, emergencyContactName, emergency_contact_phone, emergencyContactPhone, bank_account_number, bankAccountNumber, bank_name, bankName, salary, } = req.body;
+        // Normalize field names
+        const empId = employee_id || employeeId;
+        const name = full_name || fullName;
+        const joining = date_of_joining || dateOfJoining || null;
+        const birth = date_of_birth || dateOfBirth || null;
+        const iqamaNum = iqama_number || iqamaNumber || null;
+        const iqamaExp = iqama_expiry || iqamaExpiry || null;
+        const emergName = emergency_contact_name || emergencyContactName || null;
+        const emergPhone = emergency_contact_phone || emergencyContactPhone || null;
+        const bankAcc = bank_account_number || bankAccountNumber || null;
+        const bank = bank_name || bankName || null;
+        const photoUrl = profile_photo_url || profilePhotoUrl || null;
+        // Validation
+        if (!empId || !name || !email || !password) {
+            res.status(400).json({
+                success: false,
+                error: 'employee_id, full_name, email and password are required',
+            });
+            return;
+        }
+        if (password.length < 8) {
+            res.status(400).json({
+                success: false,
+                error: 'Password must be at least 8 characters',
+            });
+            return;
+        }
+        // Validate role
+        const validRoles = ['employee', 'hr', 'admin', 'manager'];
+        if (role && !validRoles.includes(role)) {
+            res.status(400).json({
+                success: false,
+                error: `Role must be one of: ${validRoles.join(', ')}`,
+            });
+            return;
+        }
+        // Check for duplicates
+        const existing = await db_1.default.query('SELECT id FROM users WHERE email = $1 OR employee_id = $2', [email.toLowerCase().trim(), empId]);
+        if (existing.rows.length > 0) {
+            res.status(409).json({
+                success: false,
+                error: 'Employee with this email or employee ID already exists',
+            });
+            return;
+        }
+        // Hash password
+        const passwordHash = await bcryptjs_1.default.hash(password, 12);
+        // Insert new employee
+        const result = await db_1.default.query(`INSERT INTO users (
+        employee_id, full_name, email, password_hash, phone, department, designation, role,
+        profile_photo_url, date_of_joining, date_of_birth, gender, address, city,
+        nationality, iqama_number, iqama_expiry,
+        emergency_contact_name, emergency_contact_phone,
+        bank_account_number, bank_name, salary
+      ) VALUES (
+        $1, $2, $3, $4, $5, $6, $7, $8,
+        $9, $10, $11, $12, $13, $14,
+        $15, $16, $17,
+        $18, $19,
+        $20, $21, $22
+      ) RETURNING ${USER_SELECT}`, [
+            empId,
+            name,
+            email.toLowerCase().trim(),
+            passwordHash,
+            phone || null,
+            department || null,
+            designation || null,
+            role || 'employee',
+            photoUrl,
+            joining,
+            birth,
+            gender || null,
+            address || null,
+            city || null,
+            nationality || null,
+            iqamaNum,
+            iqamaExp,
+            emergName,
+            emergPhone,
+            bankAcc,
+            bank,
+            salary || null,
+        ]);
+        // Create default attendance policy
+        await db_1.default.query(`INSERT INTO employee_attendance_policy (user_id, geofence_override, photo_required, allow_remote)
+       VALUES ($1, 'office', true, false)
+       ON CONFLICT (user_id) DO NOTHING`, [result.rows[0].id]);
+        res.status(201).json({
+            success: true,
+            data: mapUser(result.rows[0]),
+        });
+    }
+    catch (error) {
+        console.error('[createEmployee]', error);
+        if (error.code === '23505') {
+            res.status(409).json({
+                success: false,
+                error: 'Employee with this email or employee ID already exists',
+            });
+            return;
+        }
+        res.status(500).json({ success: false, error: 'Internal server error' });
+    }
+};
+exports.createEmployee = createEmployee;
+// ============================================================================
+// PUT /api/employees/:id — Update employee with full HR fields
+// ============================================================================
+const updateEmployee = async (req, res) => {
+    try {
+        if (!req.user) {
+            res.status(401).json({ success: false, error: 'Authentication required' });
+            return;
+        }
+        const { id } = req.params;
+        const employeeId = parseInt(id);
+        if (isNaN(employeeId)) {
+            res.status(400).json({ success: false, error: 'Invalid employee ID' });
+            return;
+        }
+        // Check if employee exists
+        const existing = await db_1.default.query('SELECT id FROM users WHERE id = $1', [employeeId]);
+        if (existing.rows.length === 0) {
+            res.status(404).json({ success: false, error: 'Employee not found' });
+            return;
+        }
+        // Support both camelCase and snake_case
+        const { full_name, fullName, phone, department, designation, role, profile_photo_url, profilePhotoUrl, date_of_joining, dateOfJoining, date_of_birth, dateOfBirth, gender, address, city, nationality, iqama_number, iqamaNumber, iqama_expiry, iqamaExpiry, emergency_contact_name, emergencyContactName, emergency_contact_phone, emergencyContactPhone, bank_account_number, bankAccountNumber, bank_name, bankName, salary, is_active, isActive, } = req.body;
+        const result = await db_1.default.query(`UPDATE users SET
+        full_name = COALESCE($1, full_name),
+        phone = COALESCE($2, phone),
+        department = COALESCE($3, department),
+        designation = COALESCE($4, designation),
+        role = COALESCE($5, role),
+        profile_photo_url = COALESCE($6, profile_photo_url),
+        date_of_joining = COALESCE($7, date_of_joining),
+        date_of_birth = COALESCE($8, date_of_birth),
+        gender = COALESCE($9, gender),
+        address = COALESCE($10, address),
+        city = COALESCE($11, city),
+        nationality = COALESCE($12, nationality),
+        iqama_number = COALESCE($13, iqama_number),
+        iqama_expiry = COALESCE($14, iqama_expiry),
+        emergency_contact_name = COALESCE($15, emergency_contact_name),
+        emergency_contact_phone = COALESCE($16, emergency_contact_phone),
+        bank_account_number = COALESCE($17, bank_account_number),
+        bank_name = COALESCE($18, bank_name),
+        salary = COALESCE($19, salary),
+        is_active = COALESCE($20, is_active),
+        updated_at = NOW()
+      WHERE id = $21
+      RETURNING ${USER_SELECT}`, [
+            full_name || fullName || null,
+            phone || null,
+            department || null,
+            designation || null,
+            role || null,
+            profile_photo_url || profilePhotoUrl || null,
+            date_of_joining || dateOfJoining || null,
+            date_of_birth || dateOfBirth || null,
+            gender || null,
+            address || null,
+            city || null,
+            nationality || null,
+            iqama_number || iqamaNumber || null,
+            iqama_expiry || iqamaExpiry || null,
+            emergency_contact_name || emergencyContactName || null,
+            emergency_contact_phone || emergencyContactPhone || null,
+            bank_account_number || bankAccountNumber || null,
+            bank_name || bankName || null,
+            salary || null,
+            is_active !== undefined ? is_active : isActive !== undefined ? isActive : null,
+            employeeId,
+        ]);
+        res.json({
+            success: true,
+            data: mapUser(result.rows[0]),
+        });
+    }
+    catch (error) {
+        console.error('[updateEmployee]', error);
+        res.status(500).json({ success: false, error: 'Internal server error' });
+    }
+};
+exports.updateEmployee = updateEmployee;
+// ============================================================================
+// DELETE /api/employees/:id — Delete employee
+// ============================================================================
+const deleteEmployee = async (req, res) => {
+    try {
+        if (!req.user) {
+            res.status(401).json({ success: false, error: 'Authentication required' });
+            return;
+        }
+        const { id } = req.params;
+        const employeeId = parseInt(id);
+        if (isNaN(employeeId)) {
+            res.status(400).json({ success: false, error: 'Invalid employee ID' });
+            return;
+        }
+        // Prevent self-deletion
+        if (employeeId === req.user.userId) {
+            res.status(400).json({
+                success: false,
+                error: 'Cannot delete your own account',
+            });
+            return;
+        }
+        const result = await db_1.default.query('DELETE FROM users WHERE id = $1 RETURNING id, full_name, email', [employeeId]);
+        if (result.rows.length === 0) {
+            res.status(404).json({ success: false, error: 'Employee not found' });
+            return;
+        }
+        res.json({
+            success: true,
+            message: `Employee ${result.rows[0].full_name} deleted successfully`,
+        });
+    }
+    catch (error) {
+        console.error('[deleteEmployee]', error);
+        res.status(500).json({ success: false, error: 'Internal server error' });
+    }
+};
+exports.deleteEmployee = deleteEmployee;
+// ============================================================================
+// PATCH /api/employees/:id/toggle-active — Toggle employee active status
+// ============================================================================
+const toggleEmployeeActive = async (req, res) => {
+    try {
+        if (!req.user) {
+            res.status(401).json({ success: false, error: 'Authentication required' });
+            return;
+        }
+        const { id } = req.params;
+        const employeeId = parseInt(id);
+        if (isNaN(employeeId)) {
+            res.status(400).json({ success: false, error: 'Invalid employee ID' });
+            return;
+        }
+        const result = await db_1.default.query('UPDATE users SET is_active = NOT is_active, updated_at = NOW() WHERE id = $1 RETURNING id, full_name, is_active', [employeeId]);
+        if (result.rows.length === 0) {
+            res.status(404).json({ success: false, error: 'Employee not found' });
+            return;
+        }
+        res.json({
+            success: true,
+            data: {
+                id: result.rows[0].id,
+                fullName: result.rows[0].full_name,
+                isActive: result.rows[0].is_active,
+            },
+        });
+    }
+    catch (error) {
+        console.error('[toggleEmployeeActive]', error);
+        res.status(500).json({ success: false, error: 'Internal server error' });
+    }
+};
+exports.toggleEmployeeActive = toggleEmployeeActive;
+// ============================================================================
+// PUT /api/employees/me — Update current employee (self-update)
+// ============================================================================
 const updateCurrentEmployee = async (req, res) => {
     try {
         if (!req.user) {
             res.status(401).json({ success: false, error: 'Authentication required' });
             return;
         }
-        const { phone, emergencyContactName, emergencyContactPhone, } = req.body;
-        const updates = [];
-        const values = [];
-        let paramCount = 1;
-        if (phone !== undefined) {
-            updates.push(`phone = $${paramCount}`);
-            values.push(phone);
-            paramCount++;
-        }
-        if (emergencyContactName !== undefined) {
-            updates.push(`emergency_contact_name = $${paramCount}`);
-            values.push(emergencyContactName);
-            paramCount++;
-        }
-        if (emergencyContactPhone !== undefined) {
-            updates.push(`emergency_contact_phone = $${paramCount}`);
-            values.push(emergencyContactPhone);
-            paramCount++;
-        }
-        if (updates.length === 0) {
-            res.status(400).json({ success: false, error: 'No fields to update' });
-            return;
-        }
-        updates.push(`updated_at = NOW()`);
-        values.push(req.user.userId);
-        const query = `
-      UPDATE users SET ${updates.join(', ')}
-      WHERE id = $${paramCount}
-      RETURNING id, employee_id, full_name, email, phone, department, designation, role,
-       profile_photo_url, date_of_joining, iqama_number, iqama_expiry, nationality,
-       emergency_contact_name, emergency_contact_phone, is_active, created_at
-    `;
-        const result = await db_1.default.query(query, values);
-        if (result.rows.length === 0) {
-            res.status(404).json({ success: false, error: 'Employee not found' });
-            return;
-        }
-        const employee = result.rows[0];
+        // Support both camelCase and snake_case
+        const { phone, address, city, emergency_contact_name, emergencyContactName, emergency_contact_phone, emergencyContactPhone, date_of_birth, dateOfBirth, gender, } = req.body;
+        const result = await db_1.default.query(`UPDATE users SET
+        phone = COALESCE($1, phone),
+        address = COALESCE($2, address),
+        city = COALESCE($3, city),
+        emergency_contact_name = COALESCE($4, emergency_contact_name),
+        emergency_contact_phone = COALESCE($5, emergency_contact_phone),
+        date_of_birth = COALESCE($6, date_of_birth),
+        gender = COALESCE($7, gender),
+        updated_at = NOW()
+      WHERE id = $8
+      RETURNING ${USER_SELECT}`, [
+            phone || null,
+            address || null,
+            city || null,
+            emergency_contact_name || emergencyContactName || null,
+            emergency_contact_phone || emergencyContactPhone || null,
+            date_of_birth || dateOfBirth || null,
+            gender || null,
+            req.user.userId,
+        ]);
         res.json({
             success: true,
-            data: {
-                id: employee.id,
-                employeeId: employee.employee_id,
-                fullName: employee.full_name,
-                email: employee.email,
-                phone: employee.phone,
-                department: employee.department,
-                designation: employee.designation,
-                role: employee.role,
-                profilePhotoUrl: employee.profile_photo_url,
-                dateOfJoining: employee.date_of_joining,
-                iqamaNumber: employee.iqama_number,
-                iqamaExpiry: employee.iqama_expiry,
-                nationality: employee.nationality,
-                emergencyContactName: employee.emergency_contact_name,
-                emergencyContactPhone: employee.emergency_contact_phone,
-                isActive: employee.is_active,
-                createdAt: employee.created_at,
-            },
+            data: mapUser(result.rows[0]),
         });
     }
     catch (error) {
+        console.error('[updateCurrentEmployee]', error);
         res.status(500).json({ success: false, error: 'Internal server error' });
     }
 };
 exports.updateCurrentEmployee = updateCurrentEmployee;
+// ============================================================================
+// POST /api/employees/me/photo — Upload profile photo
+// ============================================================================
 const uploadProfilePhoto = async (req, res) => {
     try {
         if (!req.user) {
             res.status(401).json({ success: false, error: 'Authentication required' });
             return;
         }
-        const file = req.file;
-        if (!file) {
-            res.status(400).json({ success: false, error: 'Profile photo is required' });
+        if (!req.file) {
+            res.status(400).json({ success: false, error: 'No photo file provided' });
             return;
         }
-        const photoUrl = `/${file.path.replace(/\\/g, '/')}`;
+        const photoUrl = `/uploads/${req.file.filename}`;
         const result = await db_1.default.query('UPDATE users SET profile_photo_url = $1, updated_at = NOW() WHERE id = $2 RETURNING profile_photo_url', [photoUrl, req.user.userId]);
-        if (result.rows.length === 0) {
-            res.status(404).json({ success: false, error: 'Employee not found' });
-            return;
-        }
         res.json({
             success: true,
             data: {
@@ -139,321 +496,9 @@ const uploadProfilePhoto = async (req, res) => {
         });
     }
     catch (error) {
+        console.error('[uploadProfilePhoto]', error);
         res.status(500).json({ success: false, error: 'Internal server error' });
     }
 };
 exports.uploadProfilePhoto = uploadProfilePhoto;
-const getAllEmployees = async (req, res) => {
-    try {
-        if (!req.user) {
-            res.status(401).json({ success: false, error: 'Authentication required' });
-            return;
-        }
-        const department = req.query.department;
-        const isActive = req.query.isActive;
-        let query = `
-      SELECT id, employee_id, full_name, email, phone, department, designation, role,
-       date_of_joining, is_active, created_at
-      FROM users
-      WHERE 1=1
-    `;
-        const params = [];
-        let paramCount = 1;
-        if (department) {
-            query += ` AND department = $${paramCount}`;
-            params.push(department);
-            paramCount++;
-        }
-        if (isActive !== undefined) {
-            query += ` AND is_active = $${paramCount}`;
-            params.push(isActive === 'true');
-            paramCount++;
-        }
-        query += ' ORDER BY full_name ASC';
-        const result = await db_1.default.query(query, params);
-        res.json({
-            success: true,
-            data: {
-                employees: result.rows.map((emp) => ({
-                    id: emp.id,
-                    employeeId: emp.employee_id,
-                    fullName: emp.full_name,
-                    email: emp.email,
-                    phone: emp.phone,
-                    department: emp.department,
-                    designation: emp.designation,
-                    role: emp.role,
-                    dateOfJoining: emp.date_of_joining,
-                    isActive: emp.is_active,
-                    createdAt: emp.created_at,
-                })),
-                total: result.rows.length,
-            },
-        });
-    }
-    catch (error) {
-        res.status(500).json({ success: false, error: 'Internal server error' });
-    }
-};
-exports.getAllEmployees = getAllEmployees;
-const createEmployee = async (req, res) => {
-    try {
-        if (!req.user) {
-            res.status(401).json({ success: false, error: 'Authentication required' });
-            return;
-        }
-        const { employeeId = req.body.employee_id, fullName = req.body.full_name, email, password, phone, department, designation, role, dateOfJoining = req.body.date_of_joining, } = req.body;
-        if (!employeeId || !fullName || !email || !password) {
-            res.status(400).json({
-                success: false,
-                error: 'Employee ID, full name, email, and password are required',
-            });
-            return;
-        }
-        const existingEmployee = await db_1.default.query('SELECT id FROM users WHERE employee_id = $1 OR email = $2', [employeeId, email]);
-        if (existingEmployee.rows.length > 0) {
-            res.status(400).json({
-                success: false,
-                error: 'Employee ID or email already exists',
-            });
-            return;
-        }
-        const passwordHash = await bcryptjs_1.default.hash(password, 10);
-        const result = await db_1.default.query(`INSERT INTO users (employee_id, full_name, email, password_hash, phone, department,
-       designation, role, date_of_joining)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-       RETURNING id, employee_id, full_name, email, phone, department, designation, role,
-       date_of_joining, is_active, created_at`, [
-            employeeId,
-            fullName,
-            email,
-            passwordHash,
-            phone || null,
-            department || null,
-            designation || null,
-            role || 'employee',
-            dateOfJoining || null,
-        ]);
-        const employee = result.rows[0];
-        res.status(201).json({
-            success: true,
-            data: {
-                id: employee.id,
-                employeeId: employee.employee_id,
-                fullName: employee.full_name,
-                email: employee.email,
-                phone: employee.phone,
-                department: employee.department,
-                designation: employee.designation,
-                role: employee.role,
-                dateOfJoining: employee.date_of_joining,
-                isActive: employee.is_active,
-                createdAt: employee.created_at,
-            },
-        });
-    }
-    catch (error) {
-        console.error('Error creating employee:', error);
-        res.status(500).json({ success: false, error: 'Internal server error' });
-    }
-};
-exports.createEmployee = createEmployee;
-const getEmployeeById = async (req, res) => {
-    try {
-        if (!req.user) {
-            res.status(401).json({ success: false, error: 'Authentication required' });
-            return;
-        }
-        const employeeId = parseInt(req.params.id);
-        if (isNaN(employeeId)) {
-            res.status(400).json({ success: false, error: 'Invalid employee ID' });
-            return;
-        }
-        const result = await db_1.default.query(`SELECT id, employee_id, full_name, email, phone, department, designation, role,
-       profile_photo_url, date_of_joining, iqama_number, iqama_expiry, nationality,
-       emergency_contact_name, emergency_contact_phone, is_active, created_at
-       FROM users WHERE id = $1`, [employeeId]);
-        if (result.rows.length === 0) {
-            res.status(404).json({ success: false, error: 'Employee not found' });
-            return;
-        }
-        const employee = result.rows[0];
-        res.json({
-            success: true,
-            data: {
-                id: employee.id,
-                employeeId: employee.employee_id,
-                fullName: employee.full_name,
-                email: employee.email,
-                phone: employee.phone,
-                department: employee.department,
-                designation: employee.designation,
-                role: employee.role,
-                profilePhotoUrl: employee.profile_photo_url,
-                dateOfJoining: employee.date_of_joining,
-                iqamaNumber: employee.iqama_number,
-                iqamaExpiry: employee.iqama_expiry,
-                nationality: employee.nationality,
-                emergencyContactName: employee.emergency_contact_name,
-                emergencyContactPhone: employee.emergency_contact_phone,
-                isActive: employee.is_active,
-                createdAt: employee.created_at,
-            },
-        });
-    }
-    catch (error) {
-        res.status(500).json({ success: false, error: 'Internal server error' });
-    }
-};
-exports.getEmployeeById = getEmployeeById;
-const updateEmployee = async (req, res) => {
-    try {
-        if (!req.user) {
-            res.status(401).json({ success: false, error: 'Authentication required' });
-            return;
-        }
-        const employeeId = parseInt(req.params.id);
-        if (isNaN(employeeId)) {
-            res.status(400).json({ success: false, error: 'Invalid employee ID' });
-            return;
-        }
-        const { fullName, email, phone, department, designation, role, dateOfJoining, iqamaNumber, iqamaExpiry, nationality, emergencyContactName, emergencyContactPhone, } = req.body;
-        const updates = [];
-        const values = [];
-        let paramCount = 1;
-        if (fullName !== undefined) {
-            updates.push(`full_name = $${paramCount}`);
-            values.push(fullName);
-            paramCount++;
-        }
-        if (email !== undefined) {
-            updates.push(`email = $${paramCount}`);
-            values.push(email);
-            paramCount++;
-        }
-        if (phone !== undefined) {
-            updates.push(`phone = $${paramCount}`);
-            values.push(phone);
-            paramCount++;
-        }
-        if (department !== undefined) {
-            updates.push(`department = $${paramCount}`);
-            values.push(department);
-            paramCount++;
-        }
-        if (designation !== undefined) {
-            updates.push(`designation = $${paramCount}`);
-            values.push(designation);
-            paramCount++;
-        }
-        if (role !== undefined) {
-            updates.push(`role = $${paramCount}`);
-            values.push(role);
-            paramCount++;
-        }
-        if (dateOfJoining !== undefined) {
-            updates.push(`date_of_joining = $${paramCount}`);
-            values.push(dateOfJoining);
-            paramCount++;
-        }
-        if (iqamaNumber !== undefined) {
-            updates.push(`iqama_number = $${paramCount}`);
-            values.push(iqamaNumber);
-            paramCount++;
-        }
-        if (iqamaExpiry !== undefined) {
-            updates.push(`iqama_expiry = $${paramCount}`);
-            values.push(iqamaExpiry);
-            paramCount++;
-        }
-        if (nationality !== undefined) {
-            updates.push(`nationality = $${paramCount}`);
-            values.push(nationality);
-            paramCount++;
-        }
-        if (emergencyContactName !== undefined) {
-            updates.push(`emergency_contact_name = $${paramCount}`);
-            values.push(emergencyContactName);
-            paramCount++;
-        }
-        if (emergencyContactPhone !== undefined) {
-            updates.push(`emergency_contact_phone = $${paramCount}`);
-            values.push(emergencyContactPhone);
-            paramCount++;
-        }
-        if (updates.length === 0) {
-            res.status(400).json({ success: false, error: 'No fields to update' });
-            return;
-        }
-        updates.push(`updated_at = NOW()`);
-        values.push(employeeId);
-        const query = `
-      UPDATE users SET ${updates.join(', ')}
-      WHERE id = $${paramCount}
-      RETURNING id, employee_id, full_name, email, phone, department, designation, role,
-       profile_photo_url, date_of_joining, iqama_number, iqama_expiry, nationality,
-       emergency_contact_name, emergency_contact_phone, is_active, created_at
-    `;
-        const result = await db_1.default.query(query, values);
-        if (result.rows.length === 0) {
-            res.status(404).json({ success: false, error: 'Employee not found' });
-            return;
-        }
-        const employee = result.rows[0];
-        res.json({
-            success: true,
-            data: {
-                id: employee.id,
-                employeeId: employee.employee_id,
-                fullName: employee.full_name,
-                email: employee.email,
-                phone: employee.phone,
-                department: employee.department,
-                designation: employee.designation,
-                role: employee.role,
-                profilePhotoUrl: employee.profile_photo_url,
-                dateOfJoining: employee.date_of_joining,
-                iqamaNumber: employee.iqama_number,
-                iqamaExpiry: employee.iqama_expiry,
-                nationality: employee.nationality,
-                emergencyContactName: employee.emergency_contact_name,
-                emergencyContactPhone: employee.emergency_contact_phone,
-                isActive: employee.is_active,
-                createdAt: employee.created_at,
-            },
-        });
-    }
-    catch (error) {
-        res.status(500).json({ success: false, error: 'Internal server error' });
-    }
-};
-exports.updateEmployee = updateEmployee;
-const deleteEmployee = async (req, res) => {
-    try {
-        if (!req.user) {
-            res.status(401).json({ success: false, error: 'Authentication required' });
-            return;
-        }
-        const employeeId = parseInt(req.params.id);
-        if (isNaN(employeeId)) {
-            res.status(400).json({ success: false, error: 'Invalid employee ID' });
-            return;
-        }
-        const result = await db_1.default.query('UPDATE users SET is_active = false, updated_at = NOW() WHERE id = $1 RETURNING id', [employeeId]);
-        if (result.rows.length === 0) {
-            res.status(404).json({ success: false, error: 'Employee not found' });
-            return;
-        }
-        res.json({
-            success: true,
-            data: {
-                message: 'Employee deactivated successfully',
-            },
-        });
-    }
-    catch (error) {
-        res.status(500).json({ success: false, error: 'Internal server error' });
-    }
-};
-exports.deleteEmployee = deleteEmployee;
 //# sourceMappingURL=employeeController.js.map
