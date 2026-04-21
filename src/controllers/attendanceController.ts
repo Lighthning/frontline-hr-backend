@@ -37,12 +37,6 @@ export const checkIn = async (req: AuthRequest, res: Response): Promise<void> =>
     const { latitude, longitude } = req.body;
     const file = req.file;
 
-    // Debug logging
-    console.log('[CheckIn] Received request - userId:', userId);
-    console.log('[CheckIn] req.body:', JSON.stringify(req.body));
-    console.log('[CheckIn] latitude:', latitude, 'type:', typeof latitude);
-    console.log('[CheckIn] longitude:', longitude, 'type:', typeof longitude);
-    console.log('[CheckIn] file:', file ? file.filename : 'NO FILE');
 
     // Fetch employee's attendance policy
     const policyResult = await pool.query(
