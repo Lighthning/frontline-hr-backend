@@ -245,9 +245,6 @@ export const createEmployee = async (req: AuthRequest, res: Response): Promise<v
       designation,
       role,
       dateOfJoining = req.body.date_of_joining,
-      iqamaNumber = req.body.iqama_number,
-      iqamaExpiry = req.body.iqama_expiry,
-      nationality,
     } = req.body;
 
     if (!employeeId || !fullName || !email || !password) {
@@ -275,10 +272,10 @@ export const createEmployee = async (req: AuthRequest, res: Response): Promise<v
 
     const result = await pool.query(
       `INSERT INTO users (employee_id, full_name, email, password_hash, phone, department,
-       designation, role, date_of_joining, iqama_number, iqama_expiry, nationality)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+       designation, role, date_of_joining)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
        RETURNING id, employee_id, full_name, email, phone, department, designation, role,
-       date_of_joining, iqama_number, iqama_expiry, nationality, is_active, created_at`,
+       date_of_joining, is_active, created_at`,
       [
         employeeId,
         fullName,
@@ -289,9 +286,6 @@ export const createEmployee = async (req: AuthRequest, res: Response): Promise<v
         designation || null,
         role || 'employee',
         dateOfJoining || null,
-        iqamaNumber || null,
-        iqamaExpiry || null,
-        nationality || null,
       ]
     );
 
@@ -309,14 +303,12 @@ export const createEmployee = async (req: AuthRequest, res: Response): Promise<v
         designation: employee.designation,
         role: employee.role,
         dateOfJoining: employee.date_of_joining,
-        iqamaNumber: employee.iqama_number,
-        iqamaExpiry: employee.iqama_expiry,
-        nationality: employee.nationality,
         isActive: employee.is_active,
         createdAt: employee.created_at,
       },
     });
   } catch (error) {
+    console.error('Error creating employee:', error);
     res.status(500).json({ success: false, error: 'Internal server error' });
   }
 };

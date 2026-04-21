@@ -202,7 +202,7 @@ const createEmployee = async (req, res) => {
             res.status(401).json({ success: false, error: 'Authentication required' });
             return;
         }
-        const { employeeId = req.body.employee_id, fullName = req.body.full_name, email, password, phone, department, designation, role, dateOfJoining = req.body.date_of_joining, iqamaNumber = req.body.iqama_number, iqamaExpiry = req.body.iqama_expiry, nationality, } = req.body;
+        const { employeeId = req.body.employee_id, fullName = req.body.full_name, email, password, phone, department, designation, role, dateOfJoining = req.body.date_of_joining, } = req.body;
         if (!employeeId || !fullName || !email || !password) {
             res.status(400).json({
                 success: false,
@@ -220,10 +220,10 @@ const createEmployee = async (req, res) => {
         }
         const passwordHash = await bcryptjs_1.default.hash(password, 10);
         const result = await db_1.default.query(`INSERT INTO users (employee_id, full_name, email, password_hash, phone, department,
-       designation, role, date_of_joining, iqama_number, iqama_expiry, nationality)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+       designation, role, date_of_joining)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
        RETURNING id, employee_id, full_name, email, phone, department, designation, role,
-       date_of_joining, iqama_number, iqama_expiry, nationality, is_active, created_at`, [
+       date_of_joining, is_active, created_at`, [
             employeeId,
             fullName,
             email,
@@ -233,9 +233,6 @@ const createEmployee = async (req, res) => {
             designation || null,
             role || 'employee',
             dateOfJoining || null,
-            iqamaNumber || null,
-            iqamaExpiry || null,
-            nationality || null,
         ]);
         const employee = result.rows[0];
         res.status(201).json({
@@ -250,15 +247,13 @@ const createEmployee = async (req, res) => {
                 designation: employee.designation,
                 role: employee.role,
                 dateOfJoining: employee.date_of_joining,
-                iqamaNumber: employee.iqama_number,
-                iqamaExpiry: employee.iqama_expiry,
-                nationality: employee.nationality,
                 isActive: employee.is_active,
                 createdAt: employee.created_at,
             },
         });
     }
     catch (error) {
+        console.error('Error creating employee:', error);
         res.status(500).json({ success: false, error: 'Internal server error' });
     }
 };
